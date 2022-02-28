@@ -1,13 +1,14 @@
 package com.example.demo.service.impl;
 
 import com.example.demo.constant.SimilarityConstants;
+import com.example.demo.model.SimilarFile;
 import com.example.demo.service.SimilarityService;
 import com.example.demo.util.SimilarityUtils;
 import com.example.demo.util.TikaUtils;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -34,29 +35,30 @@ public class SimilarityServiceImpl implements SimilarityService {
     private static final Logger logger = LoggerFactory.getLogger(SimilarityServiceImpl.class);
 
     @Override
-    public List<Pair<String, Double>> search(String filename, String dirname) {
+    public List<SimilarFile> search(String filename, String dirname) {
         Assert.hasText(filename, "filename must has text");
         Path path = Paths.get(filename);
         if (!path.toFile().exists()) {
             return null;
         }
         Path folder = StringUtils.isEmpty(dirname) ? path.getParent() : Paths.get(dirname);
-        List<Pair<String, Double>> similarFiles = new ArrayList<>();
+        List<SimilarFile> similarFiles = new ArrayList<>();
         FileUtils.listFiles(folder.toFile(), null, true).stream().forEach(file -> {
-            String target = file.toString();
-            if (filename.equals(target)) {
+            String targetPath = file.toString();
+            String targetName = FilenameUtils.getName(targetPath);
+            if (filename.equals(targetPath)) {
                 return;
             }
-            Double score = getSimilarityScore(filename, target);
+            Double score = getSimilarityScore(filename, targetPath);
             if (isSimilar(score)) {
-                similarFiles.add(Pair.of(target, score));
+                similarFiles.add(new SimilarFile(targetPath, targetName, score));
             }
         });
         return similarFiles;
     }
 
     @Override
-    public Map<String, List<Pair<String, Double>>> search(String dirname) {
+    public Map<String, List<SimilarFile>> search(String dirname) {
         Assert.hasText(dirname, "dirname must has text");
         return processFolder(dirname, score -> SimilarityConstants.SCORE_SIMILAR.compareTo(score) <= 0);
     }
@@ -83,7 +85,7 @@ public class SimilarityServiceImpl implements SimilarityService {
     }
 
     @Override
-    public Map<String, List<Pair<String, Double>>> getSimilarityScore(String dirname) {
+    public Map<String, List<SimilarFile>> getSimilarityScore(String dirname) {
         return processFolder(dirname, score -> true);
     }
 
@@ -113,36 +115,38 @@ public class SimilarityServiceImpl implements SimilarityService {
      * @param predicate 断言函数
      * @return 文件相似度映射
      */
-    public Map<String, List<Pair<String, Double>>> processFolder(String dirname, Predicate<Double> predicate) {
+    public Map<String, List<SimilarFile>> processFolder(String dirname, Predicate<Double> predicate) {
         List<String> files = FileUtils.listFiles(new File(dirname), null, true)
                 .stream()
                 .map(File::toString)
                 .collect(Collectors.toList());
-        Map<String, List<Pair<String, Double>>> scoreMap = new LinkedHashMap<>();
+        Map<String, List<SimilarFile>> scoreMap = new LinkedHashMap<>();
         if (CollectionUtils.isEmpty(files)) {
             return scoreMap;
         }
         int size = files.size();
         for (int i = 0; i < size; i++) {
-            String leftFile = files.get(i);
+            String leftPath = files.get(i);
+            String leftName = FilenameUtils.getName(leftPath);
             for (int j = i + 1; j < size - i; j++) {
-                String rightFile = files.get(j);
-                Double score = getSimilarityScore(leftFile, rightFile);
+                String rightPath = files.get(j);
+                String rightName = FilenameUtils.getName(rightPath);
+                Double score = getSimilarityScore(leftPath, rightPath);
                 if (predicate != null && !predicate.test(score)) {
                     continue;
                 }
-                scoreMap.compute(leftFile, (k, v) -> {
+                scoreMap.compute(leftPath, (k, v) -> {
                     if (v == null) {
                         v = new ArrayList<>(size);
                     }
-                    v.add(Pair.of(rightFile, score));
+                    v.add(new SimilarFile(rightPath, rightName, score));
                     return v;
                 });
-                scoreMap.compute(rightFile, (k, v) -> {
+                scoreMap.compute(rightPath, (k, v) -> {
                     if (v == null) {
                         v = new ArrayList<>(size);
                     }
-                    v.add(Pair.of(leftFile, score));
+                    v.add(new SimilarFile(leftPath, leftName, score));
                     return v;
                 });
             }

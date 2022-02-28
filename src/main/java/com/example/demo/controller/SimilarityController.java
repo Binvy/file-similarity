@@ -1,7 +1,7 @@
 package com.example.demo.controller;
 
+import com.example.demo.model.SimilarFile;
 import com.example.demo.service.SimilarityService;
-import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,7 +31,7 @@ public class SimilarityController {
      * @return 相似的文件列表
      */
     @PostMapping("/search")
-    public List<Pair<String, Double>> searchSimilarFile(String filename, String dirname) {
+    public List<SimilarFile> searchSimilarFile(String filename, String dirname) {
         return similarityService.search(filename, dirname);
     }
 
@@ -41,7 +41,7 @@ public class SimilarityController {
      * @return
      */
     @PostMapping("/search/dir")
-    public Map<String, List<Pair<String, Double>>> searchSimilarFile(String dirname) {
+    public Map<String, List<SimilarFile>> searchSimilarFile(String dirname) {
         return similarityService.search(dirname);
     }
 
@@ -57,12 +57,12 @@ public class SimilarityController {
     }
 
     /**
-     * 查询指定文件夹下的相似文件
+     * 查询指定文件夹下的文件相似度
      * @param dirname
      * @return
      */
     @PostMapping("/score/dir")
-    public Map<String, List<Pair<String, Double>>> getSimilarityScore(String dirname) {
+    public Map<String, List<SimilarFile>> getSimilarityScore(String dirname) {
         return similarityService.getSimilarityScore(dirname);
     }
 

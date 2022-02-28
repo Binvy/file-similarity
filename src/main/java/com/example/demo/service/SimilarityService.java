@@ -1,6 +1,6 @@
 package com.example.demo.service;
 
-import org.apache.commons.lang3.tuple.Pair;
+import com.example.demo.model.SimilarFile;
 
 import java.util.List;
 import java.util.Map;
@@ -18,14 +18,14 @@ public interface SimilarityService {
      * @param dirname
      * @return similar files
      */
-    List<Pair<String, Double>> search(String filename, String dirname);
+    List<SimilarFile> search(String filename, String dirname);
 
     /**
      * search similar files
      * @param dirname
      * @return
      */
-    Map<String, List<Pair<String, Double>>> search(String dirname);
+    Map<String, List<SimilarFile>> search(String dirname);
 
     /**
      * get similarity score between two files
@@ -40,5 +40,5 @@ public interface SimilarityService {
      * @param dirname
      * @return
      */
-    Map<String, List<Pair<String, Double>>> getSimilarityScore(String dirname);
+    Map<String, List<SimilarFile>> getSimilarityScore(String dirname);
 }
