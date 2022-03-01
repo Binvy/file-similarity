@@ -18,6 +18,8 @@ import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +56,7 @@ public class SimilarityServiceImpl implements SimilarityService {
                 similarFiles.add(new SimilarFile(targetPath, targetName, score));
             }
         });
+        Collections.sort(similarFiles, Comparator.comparing(SimilarFile::getScore).reversed());
         return similarFiles;
     }
 
