@@ -5,6 +5,8 @@ import com.example.demo.model.SimilarFile;
 import com.example.demo.service.SimilarityService;
 import com.example.demo.util.SimilarityUtils;
 import com.example.demo.util.TikaUtils;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
@@ -17,12 +19,14 @@ import org.springframework.util.Assert;
 import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -36,15 +40,32 @@ public class SimilarityServiceImpl implements SimilarityService {
 
     private static final Logger logger = LoggerFactory.getLogger(SimilarityServiceImpl.class);
 
+    /** 相似文件缓存: key: 指定文件名-指定查询文件夹, value: 相似文件列表 */
+    private static final Cache<FileCacheKey, List<SimilarFile>> SIMILAR_FILE_CACHE = CacheBuilder.newBuilder()
+            .maximumSize(10000)
+            .expireAfterWrite(Duration.ofMinutes(60))
+            .build();
+
+    /** 文件夹相似度缓存: key: 指定查询文件夹, value: 相似文件列表映射 */
+    private static final Cache<String, Map<String, List<SimilarFile>>> SIMILAR_DIR_CACHE = CacheBuilder.newBuilder()
+            .maximumSize(10000)
+            .expireAfterWrite(Duration.ofMinutes(60))
+            .build();
+
     @Override
     public List<SimilarFile> search(String filename, String dirname) {
         Assert.hasText(filename, "filename must has text");
+        FileCacheKey cacheKey = new FileCacheKey(filename, dirname);
+        List<SimilarFile> cachedSimilarFiles = SIMILAR_FILE_CACHE.getIfPresent(cacheKey);
+        if (cachedSimilarFiles != null) {
+            return cachedSimilarFiles;
+        }
         Path path = Paths.get(filename);
         if (!path.toFile().exists()) {
             return null;
         }
         Path folder = StringUtils.isEmpty(dirname) ? path.getParent() : Paths.get(dirname);
-        List<SimilarFile> similarFiles = new ArrayList<>();
+        List similarFiles = new ArrayList<>();
         FileUtils.listFiles(folder.toFile(), null, true).stream().forEach(file -> {
             String targetPath = file.toString();
             String targetName = FilenameUtils.getName(targetPath);
@@ -57,12 +78,12 @@ public class SimilarityServiceImpl implements SimilarityService {
             }
         });
         Collections.sort(similarFiles, Comparator.comparing(SimilarFile::getScore).reversed());
+        SIMILAR_FILE_CACHE.put(cacheKey, similarFiles);
         return similarFiles;
     }
 
     @Override
     public Map<String, List<SimilarFile>> search(String dirname) {
-        Assert.hasText(dirname, "dirname must has text");
         return processFolder(dirname, score -> SimilarityConstants.SCORE_SIMILAR.compareTo(score) <= 0);
     }
 
@@ -119,6 +140,11 @@ public class SimilarityServiceImpl implements SimilarityService {
      * @return 文件相似度映射
      */
     public Map<String, List<SimilarFile>> processFolder(String dirname, Predicate<Double> predicate) {
+        Assert.hasText(dirname, "dirname must has text");
+        Map<String, List<SimilarFile>> cachedSimilarFiles = SIMILAR_DIR_CACHE.getIfPresent(dirname);
+        if (cachedSimilarFiles != null) {
+            return cachedSimilarFiles;
+        }
         List<String> files = FileUtils.listFiles(new File(dirname), null, true)
                 .stream()
                 .map(File::toString)
@@ -154,7 +180,62 @@ public class SimilarityServiceImpl implements SimilarityService {
                 });
             }
         }
+        SIMILAR_DIR_CACHE.put(dirname, scoreMap);
         return scoreMap;
+    }
+
+    class FileCacheKey {
+        private String file;
+        private String folder;
+
+        public FileCacheKey() {
+        }
+
+        public FileCacheKey(String file, String folder) {
+            this.file = file;
+            this.folder = folder;
+        }
+
+        public String getFile() {
+            return file;
+        }
+
+        public void setFile(String file) {
+            this.file = file;
+        }
+
+        public String getFolder() {
+            return folder;
+        }
+
+        public void setFolder(String folder) {
+            this.folder = folder;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            FileCacheKey that = (FileCacheKey) o;
+            return Objects.equals(file, that.file) && Objects.equals(folder, that.folder);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(file, folder);
+        }
+
+        @Override
+        public String toString() {
+            return "FileCacheKey{" +
+                    "file='" + file + '\'' +
+                    ", folder='" + folder + '\'' +
+                    '}';
+        }
     }
 
 }
