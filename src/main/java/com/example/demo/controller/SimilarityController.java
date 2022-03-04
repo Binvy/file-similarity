@@ -37,8 +37,8 @@ public class SimilarityController {
 
     /**
      * 查询指定文件夹下的相似文件
-     * @param dirname
-     * @return
+     * @param dirname 待查文件夹
+     * @return 文件相似度
      */
     @PostMapping("/search/dir")
     public Map<String, List<SimilarFile>> searchSimilarFile(String dirname) {
@@ -57,7 +57,7 @@ public class SimilarityController {
     }
 
     /**
-     * 查询指定文件夹下的文件相似度
+     * 查询指定文件夹下所有文件的相似度
      * @param dirname
      * @return
      */
