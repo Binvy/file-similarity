@@ -89,23 +89,28 @@ public class SimilarityServiceImpl implements SimilarityService {
 
     @Override
     public Double getSimilarityScore(String leftFilename, String rightFilename) {
-        String leftContent = TikaUtils.parse(leftFilename);
-        if (StringUtils.isBlank(leftContent)) {
-            return SimilarityConstants.SCORE_ZERO;
+        try {
+            String leftContent = TikaUtils.parse(leftFilename);
+            if (StringUtils.isBlank(leftContent)) {
+                return SimilarityConstants.SCORE_ZERO;
+            }
+            if (logger.isDebugEnabled()) {
+                logger.debug("left file content: {}", leftContent);
+            }
+            String rightContent = TikaUtils.parse(rightFilename);
+            if (StringUtils.isBlank(rightContent)) {
+                return SimilarityConstants.SCORE_ZERO;
+            }
+            if (logger.isDebugEnabled()) {
+                logger.debug("right file content: {}", rightContent);
+            }
+            Double score = SimilarityUtils.getJaccardSimilarity(leftContent, rightContent);
+            logger.info("similarity score between [{}] and [{}] is {}", leftFilename, rightFilename, score);
+            return score;
+        } catch (Exception e) {
+            logger.error("get similarity score exception.", e);
         }
-        if (logger.isDebugEnabled()) {
-            logger.debug("left file content: {}", leftContent);
-        }
-        String rightContent = TikaUtils.parse(rightFilename);
-        if (StringUtils.isBlank(rightContent)) {
-            return SimilarityConstants.SCORE_ZERO;
-        }
-        if (logger.isDebugEnabled()) {
-            logger.debug("right file content: {}", rightContent);
-        }
-        Double score = SimilarityUtils.getJaccardSimilarity(leftContent, rightContent);
-        logger.info("similarity score between [{}] and [{}] is {}", leftFilename, rightFilename, score);
-        return score;
+        return SimilarityConstants.SCORE_ZERO;
     }
 
     @Override
@@ -183,6 +188,9 @@ public class SimilarityServiceImpl implements SimilarityService {
         SIMILAR_DIR_CACHE.put(dirname, scoreMap);
         return scoreMap;
     }
+
+
+
 
     class FileCacheKey {
         private String file;

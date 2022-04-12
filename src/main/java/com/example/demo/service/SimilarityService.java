@@ -41,4 +41,5 @@ public interface SimilarityService {
      * @return
      */
     Map<String, List<SimilarFile>> getSimilarityScore(String dirname);
+
 }
