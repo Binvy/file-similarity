@@ -22,9 +22,14 @@ import java.util.Date;
 public class SmpFileTaskQueue {
 
     /**
-     * 新增主键id，由解析器生成，类型为varchar。
+     * 主键
      */
-    private String id;
+    private Long id;
+
+    /**
+     * 文件id，由解析器生成，类型为varchar。
+     */
+    private String fileId;
 
     /**
      * 任务类型，英文type值:

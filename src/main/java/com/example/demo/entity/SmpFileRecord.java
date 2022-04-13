@@ -1,8 +1,6 @@
 package com.example.demo.entity;
 
 import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.ToString;
 
 import java.util.Date;
 
@@ -13,10 +11,8 @@ import java.util.Date;
  * @date 2022/4/8 15:43
  */
 
-@ToString(callSuper = true)
-@EqualsAndHashCode(callSuper = true)
 @Data
-public class SmpFileRecord extends AbstractSimilarityFile {
+public class SmpFileRecord {
 
     /**
      * 新增主键id，由解析器生成，类型为varchar。
@@ -80,7 +76,7 @@ public class SmpFileRecord extends AbstractSimilarityFile {
      * 公务文书是法定机关与组织在公务活动中，按照特定的体式、经过一定的处理程序形成和使用的书面材料，又称公务文件。
      * 0（未判定），1（是），2（否）
      */
-    private Integer officialDoc;
+    private Integer officialDocFlag;
 
     /**
      * 文件标识

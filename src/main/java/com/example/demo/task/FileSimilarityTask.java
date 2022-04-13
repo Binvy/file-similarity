@@ -1,12 +1,14 @@
 package com.example.demo.task;
 
-import com.example.demo.entity.AbstractSimilarityFile;
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.example.demo.entity.SmpFileRecord;
-import com.example.demo.entity.SmpFileSimilarityPending;
 import com.example.demo.entity.SmpFileSimilarityResult;
+import com.example.demo.entity.SmpFileTaskQueue;
 import com.example.demo.mapper.SmpFileRecordMapper;
-import com.example.demo.mapper.SmpFileSimilarityPendingMapper;
 import com.example.demo.mapper.SmpFileSimilarityResultMapper;
+import com.example.demo.mapper.SmpFileTaskQueueMapper;
 import com.example.demo.service.SimilarityService;
 import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
@@ -14,10 +16,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 import java.nio.file.Paths;
-import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -37,107 +37,112 @@ public class FileSimilarityTask {
 
     private final SmpFileRecordMapper smpFileRecordMapper;
 
-    private final SmpFileSimilarityPendingMapper smpFileSimilarityPendingMapper;
-
     private final SmpFileSimilarityResultMapper smpFileSimilarityResultMapper;
 
     private final SimilarityService similarityService;
 
+    private final SmpFileTaskQueueMapper smpFileTaskQueueMapper;
+
     public FileSimilarityTask(SmpFileRecordMapper smpFileRecordMapper,
-                              SmpFileSimilarityPendingMapper smpFileSimilarityPendingMapper,
                               SmpFileSimilarityResultMapper smpFileSimilarityResultMapper,
-                              SimilarityService similarityService) {
+                              SimilarityService similarityService,
+                              SmpFileTaskQueueMapper smpFileTaskQueueMapper) {
         this.smpFileRecordMapper = smpFileRecordMapper;
-        this.smpFileSimilarityPendingMapper = smpFileSimilarityPendingMapper;
         this.smpFileSimilarityResultMapper = smpFileSimilarityResultMapper;
         this.similarityService = similarityService;
+        this.smpFileTaskQueueMapper = smpFileTaskQueueMapper;
     }
 
     /**
      * 相似度分析任务：10分钟一次
      */
-    @Scheduled(fixedDelay = 2 * 60 * 1000)
+    @Scheduled(fixedDelay = 10 * 60 * 1000)
     public void processFileSimilarity() {
         logger.info("process similarity task start");
+        try {
+            Wrapper<SmpFileTaskQueue> taskQueueParam = new QueryWrapper<SmpFileTaskQueue>()
+                    .eq("task_type", "file.similarity.analysis")
+                    .eq("task_status", 0);
+            List<SmpFileTaskQueue> taskQueueList = smpFileTaskQueueMapper.selectList(taskQueueParam);
+            if (CollectionUtils.isEmpty(taskQueueList)) {
+                logger.info("没有【待执行】的文件【相似度分析】任务列队");
+                return;
+            }
+            List<String> queueIdList = taskQueueList.stream()
+                    .map(SmpFileTaskQueue::getFileId).collect(Collectors.toList());
+            List<SmpFileRecord> queueFileList = smpFileRecordMapper.selectBatchIds(queueIdList);
+            if (CollectionUtils.isEmpty(queueFileList)) {
+                logger.info("没有对应的文件记录");
+            }
+            List<SmpFileRecord> fileList = smpFileRecordMapper.selectList(null);
+            if (CollectionUtils.isEmpty(fileList)) {
+                logger.info("文件记录列表为空");
+                return;
+            }
+            List<SmpFileRecord> completedFileList = fileList.stream()
+                    .filter(record -> !queueIdList.contains(record.getId()))
+                    .collect(Collectors.toList());
 
-        List<SmpFileSimilarityPending> pendingFileList = smpFileSimilarityPendingMapper.selectList(null);
-        if (CollectionUtils.isEmpty(pendingFileList)) {
-            logger.info("no pending file to process");
-            return;
+            if (!CollectionUtils.isEmpty(completedFileList)) {
+                // 老->新
+                processFileSimilarity(completedFileList, queueFileList);
+                // 新->老
+                processFileSimilarity(queueFileList, completedFileList);
+            }
+            // 新->新
+            processFileSimilarity(queueFileList, queueFileList);
+
+            executeSuccess(queueIdList);
+        } catch (Exception e) {
+            logger.error("process file similarity task exception.", e);
         }
-        List<SmpFileRecord> fileRecordList = smpFileRecordMapper.selectList(null);
-        if (CollectionUtils.isEmpty(fileRecordList)) {
-            logger.info("no file record to process");
-            return;
-        }
-
-        List<AbstractSimilarityFile> pendingList = pendingFileList.stream()
-                .map(record -> (AbstractSimilarityFile) record)
-                .collect(Collectors.toList());
-        List<String> pendingIdList = pendingList.stream()
-                .map(AbstractSimilarityFile::getId)
-                .collect(Collectors.toList());
-        List<AbstractSimilarityFile> completedList = fileRecordList.stream()
-                .filter(record -> !pendingIdList.contains(record.getId()))
-                .map(record -> (AbstractSimilarityFile) record)
-                .collect(Collectors.toList());
-
-        if (!CollectionUtils.isEmpty(completedList)) {
-            // 老->新
-            processFileSimilarity(completedList, pendingList);
-            // 新->老
-            processFileSimilarity(pendingList, completedList);
-        }
-        // 新->新
-        processFileSimilarity(pendingList, pendingList);
-
-        smpFileSimilarityPendingMapper.deleteBatchIds(pendingIdList);
-
         logger.info("process similarity task end");
     }
 
-    private void processFileSimilarity(List<AbstractSimilarityFile> srcFileList,
-                                       List<AbstractSimilarityFile> dstFileList) {
+    private void processFileSimilarity(List<SmpFileRecord> srcFileList,
+                                       List<SmpFileRecord> dstFileList) {
         if (CollectionUtils.isEmpty(srcFileList) || CollectionUtils.isEmpty(dstFileList)) {
             logger.info("no file to process similarity");
             return;
         }
 
-        Date currentTime = new Date();
-        for (AbstractSimilarityFile srcFile : srcFileList) {
+        for (SmpFileRecord srcFile : srcFileList) {
             String srcFileUri = Paths.get(smpParseFileDir,
-                    getDirNameByBusiType(srcFile.getBusiType()), srcFile.getFileName()).toString();
-            for (AbstractSimilarityFile dstFile : dstFileList) {
-                String dstFileUri = Paths.get(smpParseFileDir,
-                        getDirNameByBusiType(dstFile.getBusiType()), dstFile.getFileName()).toString();
-                if (Objects.equals(srcFileUri, dstFileUri)) {
-                    continue;
+                    srcFile.getFileRelativeSite(), srcFile.getFileName()).toString();
+            for (SmpFileRecord dstFile : dstFileList) {
+                try {
+                    String dstFileUri = Paths.get(smpParseFileDir,
+                            dstFile.getFileRelativeSite(), dstFile.getFileName()).toString();
+                    if (Objects.equals(srcFileUri, dstFileUri)) {
+                        continue;
+                    }
+
+                    Double score = similarityService.getSimilarityScore(srcFileUri, dstFileUri);
+
+                    SmpFileSimilarityResult record = new SmpFileSimilarityResult();
+                    record.setSrcFileId(srcFile.getId());
+                    record.setDstFileId(dstFile.getId());
+                    record.setSimilarityScore(score);
+                    smpFileSimilarityResultMapper.insert(record);
+                } catch (Exception e) {
+                    logger.error("save result exception", e);
                 }
-
-                Double score = similarityService.getSimilarityScore(srcFileUri, dstFileUri);
-
-                SmpFileSimilarityResult record = new SmpFileSimilarityResult();
-                record.setSrcFileId(srcFile.getId());
-                record.setSrcFileName(srcFile.getFileName());
-                record.setSrcFileCheckSum(srcFile.getCheckSum());
-                record.setSrcFileBusiType(srcFile.getBusiType());
-                record.setSrcFileExtName(srcFile.getExtName());
-                record.setSrcFileUri(srcFileUri);
-                record.setDstFileId(dstFile.getId());
-                record.setDstFileName(dstFile.getFileName());
-                record.setDstFileCheckSum(dstFile.getCheckSum());
-                record.setDstFileBusiType(dstFile.getBusiType());
-                record.setDstFileExtName(dstFile.getExtName());
-                record.setDstFileUri(dstFileUri);
-                record.setSimilarityScore(score);
-                record.setCreateTime(currentTime);
-                smpFileSimilarityResultMapper.insert(record);
             }
         }
     }
 
-    private String getDirNameByBusiType(String busiType) {
-        return StringUtils.hasText(busiType) ? busiType : "";
+    private void executeSuccess(List<String> queueIdList) {
+        try {
+            Wrapper<SmpFileTaskQueue> updateWrapper = new UpdateWrapper<SmpFileTaskQueue>().
+                    in("file_id", queueIdList)
+                    .eq("task_type", "file.similarity.analysis")
+                    .eq("task_status", 0);
+            SmpFileTaskQueue entity = new SmpFileTaskQueue();
+            entity.setTaskStatus(2);
+            smpFileTaskQueueMapper.update(entity, updateWrapper);
+        } catch (Exception e) {
+            logger.error("execute success exception", e);
+        }
     }
 
 }
