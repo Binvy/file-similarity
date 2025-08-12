@@ -219,22 +219,7 @@ simple file similarity on apache-tika, apache-commons-text.
 
     [指南](https://commons.apache.org/proper/commons-text/userguide.html)
 
-  文字链接 [链接名称](http://链接网址)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+## 文档
+- 完整 API 参考见 `docs/API_REFERENCE.md`。
 
 
